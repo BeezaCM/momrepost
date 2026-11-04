@@ -1,0 +1,43 @@
+name: repost
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repost
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -U yt-dlp feedparser requests
+
+      - run: python repost.py
+        env:
+          UPLOADPOST_API_KEY: ${{ secrets.UPLOADPOST_API_KEY }}
+          UPLOADPOST_USER: ${{ secrets.UPLOADPOST_USER }}
+          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          PLATFORMS: "tiktok,instagram,facebook"
+
+      - name: Save state
+        if: always()
+        run: |
+          git config user.name "repost-bot"
+          git config user.email "repost-bot@users.noreply.github.com"
+          git add seen.json || exit 0
+          git commit -m "update seen" || exit 0
+          git push
