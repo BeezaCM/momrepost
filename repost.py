@@ -353,7 +353,7 @@ def post_video(creds, info, on_accepted):
                   "This does NOT count as a failed try for the video.")
             return None
         if not resp.ok:
-            print("  upload failed.")
+            print("  upload failed. Upload-Post said: " + (resp.text or "").strip()[:600])
             return False
         accepted = True
         on_accepted()                           # mark done as soon as the upload was accepted
