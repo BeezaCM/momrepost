@@ -1,5 +1,6 @@
 import json
 import os
+import random
 import re
 import subprocess
 import sys
@@ -16,6 +17,9 @@ BACKLOG_FILE = "backlog.json"            # per account: queued back-catalog vide
 ACCOUNTS_FILE = "accounts.json"
 BACKLOG_PER_DAY = 2                      # default pace for backlog videos
 MAX_TRIES = 3                            # failed attempts before a video is skipped for good
+FEED_URL = "https://www.youtube.com/feeds/videos.xml?channel_id={}"
+BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+              "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
 SHORT_MAX_SECONDS = 180                  # a Short is vertical/square and at most 3 minutes long
 TYPE_LABELS = {"shorts": "Short", "long": "regular (non-Short) video"}
 
@@ -156,8 +160,39 @@ def download(url):
     )
 
 
-def upload(api_key, profile, platforms, title, description):
+def load_comments(acc):
+    """Lines of the account's comments file (one comment per line; blanks and #lines ignored)."""
+    path = acc.get("comments_file")
+    if not path or not os.path.exists(path):
+        return []
+    with open(path, encoding="utf-8") as f:
+        lines = [line.strip() for line in f.read().splitlines()]
+    return [line for line in lines if line and not line.startswith("#")]
+
+
+def log_problems(payload):
+    """Show warnings and per-platform failures Upload-Post reports, so they're visible in the run log."""
+    if not isinstance(payload, dict):
+        return
+    for w in payload.get("warnings") or []:
+        print(f"  warning: {str(w)[:300]}")
+    results = payload.get("results")
+    if isinstance(results, dict):
+        for plat, res in results.items():
+            if not isinstance(res, dict):
+                continue
+            if res.get("skipped"):
+                print(f"  {plat} skipped: {res.get('skip_reason') or res.get('error')}")
+            elif res.get("success") is False:
+                print(f"  {plat} FAILED: {str(res.get('error', ''))[:300]}")
+            for w in res.get("warnings") or []:
+                print(f"  {plat} warning: {str(w)[:300]}")
+
+
+def upload(api_key, profile, platforms, title, description, comment=""):
     data = [("user", profile), ("title", title), ("description", description)]
+    if comment:
+        data.append(("first_comment", comment))
     data += [("platform[]", p) for p in platforms]
     with open("video.mp4", "rb") as f:
         resp = requests.post(f"{API}/upload", headers={"Authorization": f"Apikey {api_key}"},
@@ -197,6 +232,57 @@ def announce(webhook, title, yt_url, thumb, links):
         embed["image"] = {"url": thumb}
     resp = requests.post(webhook, json={"embeds": [embed]}, timeout=30)
     print("  discord announce:", resp.status_code)
+
+
+class Entry(dict):
+    """Minimal stand-in for a feedparser entry (attribute access), used by the yt-dlp fallback."""
+    def __getattr__(self, key):
+        try:
+            return self[key]
+        except KeyError:
+            raise AttributeError(key)
+
+
+def ytdlp_entries(channel):
+    """Fallback: list the channel's latest uploads with yt-dlp (no descriptions in this mode)."""
+    playlist = "https://www.youtube.com/playlist?list=UU" + channel[2:]
+    try:
+        out = subprocess.run(["yt-dlp", "--flat-playlist", "--playlist-end", "15", "--dump-single-json", playlist],
+                             check=True, capture_output=True, text=True, timeout=180).stdout
+        items = json.loads(out).get("entries") or []
+    except Exception as exc:
+        detail = (getattr(exc, "stderr", "") or "").strip().splitlines()
+        print(f"  yt-dlp fallback failed: {type(exc).__name__} {detail[-1] if detail else exc}")
+        return []
+    entries = []
+    for item in items:
+        vid = item.get("id")
+        if vid and item.get("title"):
+            entries.append(Entry(yt_videoid=vid, link=f"https://www.youtube.com/watch?v={vid}",
+                                 title=item["title"], summary=""))
+    if entries:
+        print(f"  got {len(entries)} videos from yt-dlp instead of the RSS feed.")
+    return entries
+
+
+def fetch_entries(channel):
+    """Latest videos of a channel, newest first: RSS feed (3 tries), then yt-dlp. [] if both fail."""
+    for attempt in range(3):
+        try:
+            resp = requests.get(FEED_URL.format(channel), headers={"User-Agent": BROWSER_UA}, timeout=30)
+            if resp.ok:
+                entries = feedparser.parse(resp.content).entries
+                if entries:
+                    return entries
+                print("  the feed answered but listed no videos.")
+            else:
+                print(f"  the feed request failed: HTTP {resp.status_code}")
+        except Exception as exc:
+            print(f"  the feed request failed: {type(exc).__name__} {exc}")
+        if attempt < 2:
+            time.sleep(5 * (attempt + 1))
+    print("  RSS feed unavailable; trying yt-dlp...")
+    return ytdlp_entries(channel)
 
 
 def entry_info(e):
@@ -251,18 +337,22 @@ def triage(types, url):
 
 def post_video(creds, info, on_accepted):
     """Download + upload one video. Returns True once Upload-Post accepted it."""
-    api_key, profile, platforms, webhook = creds
+    api_key, profile, platforms, webhook, comments = creds
     vid = info["id"]
     accepted = False
     try:
+        comment = random.choice(comments) if comments else ""
         download(info["link"])
-        resp, payload = upload(api_key, profile, platforms, info["title"], info["summary"])
+        resp, payload = upload(api_key, profile, platforms, info["title"], info["summary"], comment)
         print(f"  upload status code: {resp.status_code}")
         if not resp.ok:
             print("  upload failed.")
             return False
         accepted = True
         on_accepted()                           # mark done as soon as the upload was accepted
+        if comment:
+            print(f"  first comment: {comment[:80]}")
+        log_problems(payload)
 
         links = links_from(payload)
         request_id = payload.get("request_id") if isinstance(payload, dict) else None
@@ -315,25 +405,25 @@ def process_account(acc, seen_all, backlog_all):
         print(f"[{name}] skipped - missing: {', '.join(missing)}")
         return
 
-    feed = feedparser.parse(f"https://www.youtube.com/feeds/videos.xml?channel_id={channel}")
-    if not feed.entries:
-        print(f"[{name}] no entries in feed - check the channel ID.")
+    entries = fetch_entries(channel)
+    if not entries and name not in seen_all:
+        print(f"[{name}] couldn't get this channel's videos (see above) - check the channel ID. Skipping.")
         return
 
-    creds = (api_key, profile, platforms, webhook)
+    creds = (api_key, profile, platforms, webhook, load_comments(acc))
 
     if name not in seen_all:
         # First time we see this account: everything in the feed (the latest ~15 videos) counts as "known".
-        seen_all[name] = sorted({e.yt_videoid for e in feed.entries})
+        seen_all[name] = sorted({e.yt_videoid for e in entries})
         save_seen(seen_all)
         if backlog_on:
             # ...and is queued (oldest first) to be posted slowly, per_day at a time.
-            backlog_all[name] = {"queue": [entry_info(e) for e in reversed(feed.entries)],
+            backlog_all[name] = {"queue": [entry_info(e) for e in reversed(entries)],
                                  "posted": [], "fails": {}}
             save_backlog(backlog_all)
-            print(f"[{name}] first run: queued {len(feed.entries)} existing videos as backlog ({per_day}/day).")
+            print(f"[{name}] first run: queued {len(entries)} existing videos as backlog ({per_day}/day).")
         else:
-            print(f"[{name}] first run: marked {len(feed.entries)} existing videos as seen. Nothing posted.")
+            print(f"[{name}] first run: marked {len(entries)} existing videos as seen. Nothing posted.")
             return
 
     state = backlog_all.setdefault(name, {})
@@ -360,7 +450,9 @@ def process_account(acc, seen_all, backlog_all):
         return False
 
     # ---- brand-new videos: post right away -------------------------------
-    new = [e for e in reversed(feed.entries) if e.yt_videoid not in seen][:MAX_PER_RUN]
+    if not entries:
+        print(f"[{name}] couldn't read the channel's video list this run - checking only the backlog queue.")
+    new = [e for e in reversed(entries) if e.yt_videoid not in seen][:MAX_PER_RUN]
     for e in new:
         vid = e.yt_videoid
         print(f"[{name}] new video: {vid}")
