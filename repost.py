@@ -152,7 +152,7 @@ def download(url):
         os.remove("video.mp4")
     subprocess.run(
         [
-            *YTDLP, "--no-playlist",
+            *YTDLP, "--no-playlist", "--no-progress",
             "-f", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
             "--merge-output-format", "mp4",
             "-o", "video.mp4", url,
@@ -337,7 +337,8 @@ def triage(types, url):
 
 
 def post_video(creds, info, on_accepted):
-    """Download + upload one video. Returns True once Upload-Post accepted it."""
+    """Download + upload one video. True = Upload-Post accepted it, False = failed (counts as a try),
+    None = the API key was rejected (401/403): nothing is wrong with the video, so it doesn't count."""
     api_key, profile, platforms, webhook, comments = creds
     vid = info["id"]
     accepted = False
@@ -346,6 +347,11 @@ def post_video(creds, info, on_accepted):
         download(info["link"])
         resp, payload = upload(api_key, profile, platforms, info["title"], info["summary"], comment)
         print(f"  upload status code: {resp.status_code}")
+        if resp.status_code in (401, 403):
+            print(f"  upload rejected: Upload-Post says the API key isn't valid (HTTP {resp.status_code}).")
+            print("  Fix it: run setup_repo.py -> Edit an account -> Upload-Post API key. "
+                  "This does NOT count as a failed try for the video.")
+            return None
         if not resp.ok:
             print("  upload failed.")
             return False
@@ -454,6 +460,7 @@ def process_account(acc, seen_all, backlog_all):
     if not entries:
         print(f"[{name}] couldn't read the channel's video list this run - checking only the backlog queue.")
     new = [e for e in reversed(entries) if e.yt_videoid not in seen][:MAX_PER_RUN]
+    auth_failed = False
     for e in new:
         vid = e.yt_videoid
         print(f"[{name}] new video: {vid}")
@@ -461,16 +468,21 @@ def process_account(acc, seen_all, backlog_all):
         verdict = triage(types, info["link"])
         if verdict == "skip":
             mark_seen(vid)
-        elif verdict == "post" and post_video(creds, info, lambda v=vid: mark_seen(v)):
-            pass
-        elif gave_up(vid):
+            continue
+        result = post_video(creds, info, lambda v=vid: mark_seen(v)) if verdict == "post" else False
+        if result:
+            continue
+        if result is None:                      # API key rejected: stop, don't burn the video
+            auth_failed = True
+            break
+        if gave_up(vid):
             mark_seen(vid)
         else:
             save_backlog(backlog_all)           # remember the failed attempt
 
     # ---- backlog: trickle out per_day videos per rolling 24 hours --------
     handled_backlog = False
-    while backlog_on and backlog_due(state, per_day, time.time()):
+    while backlog_on and not auth_failed and backlog_due(state, per_day, time.time()):
         handled_backlog = True
         item = state["queue"][0]
         vid = item["id"]
@@ -486,7 +498,10 @@ def process_account(acc, seen_all, backlog_all):
             state["posted"].append(time.time())
             state["fails"].pop(vid, None)
 
-        if not (verdict == "post" and post_video(creds, item, accepted)):
+        result = post_video(creds, item, accepted) if verdict == "post" else False
+        if result is None:                      # API key rejected: leave the video queued
+            auth_failed = True
+        elif not result:
             if gave_up(vid):
                 state["queue"].pop(0)
                 state["fails"].pop(vid, None)
