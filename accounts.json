@@ -1,4 +1,6 @@
 {
+  "mode": "local",
+  "cron": "*/15 * * * *",
   "accounts": [
     {
       "name": "mom",

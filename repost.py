@@ -22,6 +22,7 @@ BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
               "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
 SHORT_MAX_SECONDS = 180                  # a Short is vertical/square and at most 3 minutes long
 TYPE_LABELS = {"shorts": "Short", "long": "regular (non-Short) video"}
+YTDLP = [sys.executable, "-m", "yt_dlp"]  # works wherever the package is installed, no PATH needed
 
 # GitHub passes every repo secret in as one JSON blob; on a home computer, plain env vars work too.
 try:
@@ -151,7 +152,7 @@ def download(url):
         os.remove("video.mp4")
     subprocess.run(
         [
-            "yt-dlp", "--no-playlist",
+            *YTDLP, "--no-playlist",
             "-f", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
             "--merge-output-format", "mp4",
             "-o", "video.mp4", url,
@@ -247,7 +248,7 @@ def ytdlp_entries(channel):
     """Fallback: list the channel's latest uploads with yt-dlp (no descriptions in this mode)."""
     playlist = "https://www.youtube.com/playlist?list=UU" + channel[2:]
     try:
-        out = subprocess.run(["yt-dlp", "--flat-playlist", "--playlist-end", "15", "--dump-single-json", playlist],
+        out = subprocess.run([*YTDLP, "--flat-playlist", "--playlist-end", "15", "--dump-single-json", playlist],
                              check=True, capture_output=True, text=True, timeout=180).stdout
         items = json.loads(out).get("entries") or []
     except Exception as exc:
@@ -307,7 +308,7 @@ def normalize_types(value):
 def video_kind(url):
     """'shorts' or 'long', judged from yt-dlp metadata (length + shape). None if it can't be read."""
     try:
-        out = subprocess.run(["yt-dlp", "--no-playlist", "--skip-download", "--dump-single-json", url],
+        out = subprocess.run([*YTDLP, "--no-playlist", "--skip-download", "--dump-single-json", url],
                              check=True, capture_output=True, text=True, timeout=180).stdout
         meta = json.loads(out)
     except Exception as exc:

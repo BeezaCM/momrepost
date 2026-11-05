@@ -6,7 +6,8 @@ title/description, and (optionally) sends a Discord embed with links.
 
 * `repost.py` - the script
 * `accounts.json` - one entry per YouTube channel -> Upload-Post profile + platforms (no secrets in here)
-* `.github/workflows/repost.yml` - the schedule
+* `.github/workflows/repost.yml` - the schedule (switched off in local mode)
+* `run_local.py` - local-mode runner (only used when the repo runs from your own computer)
 * `seen.json` - IDs of videos already handled, per account
 * `comments/<account>.txt` - optional list of comments, one per line (see Notes)
 * `backlog.json` - the backlog queue: older videos waiting to be posted, when the last ones went out, and
@@ -16,6 +17,13 @@ title/description, and (optionally) sends a Discord embed with links.
 Run `setup_repo.py` again and type this repo's name. A menu lets you add, edit or remove
 accounts (platforms, video types, backlog, profile, API key, Discord webhook, channel).
 You can also edit `accounts.json` by hand.
+
+## Running from your own computer instead of GitHub Actions
+Run `setup_repo.py`, type this repo's name and choose "Run mode". In local mode the workflow's schedule
+is switched off and `run_local.py` does the same job from this computer (pull state, run `repost.py`,
+push state), started by Windows Task Scheduler or cron. Secrets are kept in `local_secrets.json`, which
+is git-ignored: never commit it. Output goes to `local_run.log`. The computer has to be on, awake and online.
+Choose "Run mode" again to go back to GitHub Actions.
 
 ## Notes
 * A new account's first run looks at the channel's latest ~15 videos (all YouTube's feed exposes).

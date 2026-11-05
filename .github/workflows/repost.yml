@@ -1,8 +1,7 @@
 name: repost
 
 on:
-  schedule:
-    - cron: "*/15 * * * *"
+  # Scheduled runs are OFF: this repo runs from a local computer (run_local.py).
   workflow_dispatch:
 
 permissions:

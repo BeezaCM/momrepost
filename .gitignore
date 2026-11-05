@@ -1,3 +1,6 @@
 video.mp4
 __pycache__/
 *.pyc
+local_secrets.json
+local_run.log
+.local_run.lock
