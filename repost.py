@@ -21,6 +21,7 @@ FEED_URL = "https://www.youtube.com/feeds/videos.xml?channel_id={}"
 BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
               "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
 SHORT_MAX_SECONDS = 180                  # a Short is vertical/square and at most 3 minutes long
+DESC_MAX = 2000                          # Instagram and TikTok reject descriptions over 2,200 characters
 TYPE_LABELS = {"shorts": "Short", "long": "regular (non-Short) video"}
 YTDLP = [sys.executable, "-m", "yt_dlp"]  # works wherever the package is installed, no PATH needed
 
@@ -190,7 +191,16 @@ def log_problems(payload):
                 print(f"  {plat} warning: {str(w)[:300]}")
 
 
+def clip(text, limit):
+    """Shorten text to at most `limit` characters, cutting at a word boundary."""
+    text = (text or "").strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit - 3].rsplit(" ", 1)[0].rstrip() + "..."
+
+
 def upload(api_key, profile, platforms, title, description, comment=""):
+    description = clip(description, DESC_MAX)
     data = [("user", profile), ("title", title), ("description", description)]
     if comment:
         data.append(("first_comment", comment))
