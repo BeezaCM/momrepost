@@ -10,18 +10,10 @@
         "tiktok",
         "instagram",
         "facebook"
-      ]
-    },
-    {
-      "name": "corey",
-      "channel_id": "UCBa70O3rh0Az5UrFUgmbS2A",
-      "profile": "cancel",
-      "platforms": [
-        "later"
       ],
-      "api_key_secret": "UPLOADPOST_API_KEY",
-      "types": "long",
-      "backlog": false
+      "types": "shorts",
+      "backlog": true,
+      "backlog_per_day": 2
     }
   ]
 }

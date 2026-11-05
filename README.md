@@ -11,9 +11,9 @@ title/description, and (optionally) sends a Discord embed with links.
 * `backlog.json` - queue of older videos waiting to be posted, when the last ones went out, and failure counts
 
 ## Adding or changing accounts
-Run `setup_repo.py` again and type this repo's name; it adds accounts for you.
-To remove an account, delete its entry in `accounts.json` (and its secrets in
-Settings -> Secrets and variables -> Actions).
+Run `setup_repo.py` again and type this repo's name. A menu lets you add, edit or remove
+accounts (platforms, video types, backlog, profile, API key, Discord webhook, channel).
+You can also edit `accounts.json` by hand.
 
 ## Notes
 * A new account's first run looks at the channel's latest ~15 videos (all YouTube's feed exposes).
