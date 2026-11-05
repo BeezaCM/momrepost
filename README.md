@@ -26,7 +26,8 @@ Every 15 minutes (30 on private GitHub repos), for each account:
 Run `python setup_repo.py` again and type the repo's name. The menu:
 
     1) Add a new account
-    2) Edit an account (platforms, video types, backlog, profile, API key, Discord, channel, comments)
+    2) Edit an account (platforms, video types, backlog, profile, API key, Discord, channel, comments,
+       queue the whole channel)
     3) Remove an account
     4) Show the backlog schedule
     5) Run mode (GitHub Actions or this computer)
@@ -60,6 +61,12 @@ first. With backlog on they post 2 per rolling 24 hours (change it under Edit ->
 they post right away and don't use up backlog slots. Option 4 in the menu shows the estimated times.
 To re-queue an existing account: Edit -> Backlog -> yes to "Queue this channel's latest 15 videos now?".
 Anything from those 15 that was already posted would be posted again.
+
+**Queue the channel's whole history:** Edit -> option 9, "Queue ALL of this channel's videos as backlog".
+It lists every upload with yt-dlp and adds the ones not handled yet (anything already posted, skipped or
+queued is left out), oldest first or newest first as you choose. It works from any computer with yt-dlp.
+You can add specific video IDs back by typing them when asked. Videos added this way have no description
+(only the title), which is all TikTok and Instagram use anyway.
 
 ## Posting rules
 - **Shorts / long:** `types` per account. A Short is at most 3 minutes and vertical or square. Videos that
