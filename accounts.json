@@ -15,7 +15,10 @@
       ],
       "types": "shorts",
       "backlog": true,
-      "backlog_per_day": 2
+      "backlog_per_day": 2,
+      "comments_file": "comments/mom.txt",
+      "schedule_tz": "America/Los_Angeles",
+      "schedule_times": "09:00,18:00,23:59"
     }
   ]
 }

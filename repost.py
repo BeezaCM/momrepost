@@ -20,6 +20,10 @@ MAX_TRIES = 3                            # failed attempts before a video is ski
 FEED_URL = "https://www.youtube.com/feeds/videos.xml?channel_id={}"
 BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
               "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
+LIVE_STATUSES = ("is_live", "is_upcoming", "was_live", "post_live")   # yt-dlp live_status values to ignore
+BLOCKED_TEXT = ("members-only", "members only", "join this channel", "channel's members",
+                "private video", "video unavailable", "this video is not available",
+                "has been removed", "has been terminated", "no longer available")   # can never be downloaded
 SHORT_MAX_SECONDS = 180                  # a Short is vertical/square and at most 3 minutes long
 DESC_MAX = 2000                          # Instagram and TikTok reject descriptions over 2,200 characters
 TYPE_LABELS = {"shorts": "Short", "long": "regular (non-Short) video"}
@@ -316,15 +320,22 @@ def normalize_types(value):
 
 
 def video_kind(url):
-    """'shorts' or 'long', judged from yt-dlp metadata (length + shape). None if it can't be read."""
+    """'shorts', 'long', 'live' or 'blocked', judged from yt-dlp metadata (length + shape). None if it can't be read."""
     try:
         out = subprocess.run([*YTDLP, "--no-playlist", "--skip-download", "--dump-single-json", url],
                              check=True, capture_output=True, text=True, timeout=180).stdout
         meta = json.loads(out)
     except Exception as exc:
-        detail = (getattr(exc, "stderr", "") or "").strip().splitlines()
+        err = (getattr(exc, "stderr", "") or "")
+        detail = err.strip().splitlines()
+        if any(t in err.lower() for t in BLOCKED_TEXT):
+            return "blocked"                                        # members-only, private or removed
         print(f"  couldn't read video info: {type(exc).__name__} {detail[-1] if detail else exc}")
         return None
+    if meta.get("availability") in ("subscriber_only", "premium_only", "private"):
+        return "blocked"
+    if meta.get("live_status") in LIVE_STATUSES or meta.get("is_live") or meta.get("was_live"):
+        return "live"                                               # livestream (live now, upcoming or a replay)
     duration = meta.get("duration") or 0
     width, height = meta.get("width"), meta.get("height")
     vertical = (height >= width) if (width and height) else True    # shape unknown -> go by length alone
@@ -335,9 +346,15 @@ def video_kind(url):
 
 def triage(types, url):
     """'post', 'skip' (doesn't match this account's types) or 'error' (couldn't tell)."""
-    if types == "both":
-        return "post"
     kind = video_kind(url)
+    if kind == "blocked":
+        print("  skipping: it's members-only, private or removed, so it can't be downloaded.")
+        return "skip"
+    if kind == "live":
+        print("  skipping: it's a livestream (or a stream replay/premiere), and livestreams are never reposted.")
+        return "skip"
+    if types == "both":
+        return "post"                           # unreadable info is fine for 'both': nothing to filter on
     if kind is None:
         return "error"
     if kind == types:
@@ -387,6 +404,8 @@ def post_video(creds, info, on_accepted):
 def backlog_due(state, per_day, now):
     """True when a backlog video may go out: fewer than per_day in the last 24h, spaced evenly."""
     state["posted"] = [t for t in state.get("posted", []) if now - t < 86400]
+    if now < state.get("scheduled_until", 0):     # videos are scheduled on Upload-Post's calendar until then
+        return False
     if not state.get("queue") or len(state["posted"]) >= per_day:
         return False
     min_gap = 86400 / per_day * 0.9             # 2/day -> at least ~10.8h apart
@@ -518,7 +537,11 @@ def process_account(acc, seen_all, backlog_all):
         save_backlog(backlog_all)
         break                                   # one real attempt per run
     if not new and not handled_backlog:
-        if backlog_on and state["queue"]:
+        if state.get("scheduled_until", 0) > time.time():
+            left = time.strftime("%Y-%m-%d", time.localtime(state["scheduled_until"]))
+            print(f"[{name}] backlog paused: videos are scheduled on Upload-Post until {left}; "
+                  f"{len(state.get('queue', []))} still queued here for after that.")
+        elif backlog_on and state["queue"]:
             mins = max(0, int((backlog_next_time(state["posted"], per_day, time.time()) - time.time()) / 60))
             print(f"[{name}] backlog: {len(state['queue'])} queued, next one in about {mins // 60}h {mins % 60}m.")
         elif backlog_on:
