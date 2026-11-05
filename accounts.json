@@ -1,0 +1,27 @@
+{
+  "accounts": [
+    {
+      "name": "mom",
+      "channel_id_secret": "CHANNEL_ID",
+      "profile_secret": "UPLOADPOST_USER",
+      "api_key_secret": "UPLOADPOST_API_KEY",
+      "discord_secret": "DISCORD_WEBHOOK",
+      "platforms": [
+        "tiktok",
+        "instagram",
+        "facebook"
+      ]
+    },
+    {
+      "name": "corey",
+      "channel_id": "UCBa70O3rh0Az5UrFUgmbS2A",
+      "profile": "cancel",
+      "platforms": [
+        "later"
+      ],
+      "api_key_secret": "UPLOADPOST_API_KEY",
+      "types": "long",
+      "backlog": false
+    }
+  ]
+}

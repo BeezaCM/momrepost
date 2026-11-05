@@ -1,19 +1,35 @@
-# YouTube -> Upload-Post auto-repost
+# YouTube -> Upload-Post auto-repost (multi-account)
 
-Checks your YouTube channel's RSS feed on a schedule (GitHub Actions). For every
-new video it downloads the file with yt-dlp, posts it through Upload-Post with
-the same title/description, and (optionally) sends a Discord embed with links.
+Checks YouTube channels' RSS feeds on a schedule (GitHub Actions). For every new video
+it downloads the file with yt-dlp, posts it through Upload-Post with the same
+title/description, and (optionally) sends a Discord embed with links.
 
 * `repost.py` - the script
+* `accounts.json` - one entry per YouTube channel -> Upload-Post profile + platforms (no secrets in here)
 * `.github/workflows/repost.yml` - the schedule
-* `seen.json` - IDs of videos already handled (created on the first run)
+* `seen.json` - IDs of videos already handled, per account
+* `backlog.json` - queue of older videos waiting to be posted, when the last ones went out, and failure counts
+
+## Adding or changing accounts
+Run `setup_repo.py` again and type this repo's name; it adds accounts for you.
+To remove an account, delete its entry in `accounts.json` (and its secrets in
+Settings -> Secrets and variables -> Actions).
 
 ## Notes
-* The first run only records existing videos; it does not repost your back catalog.
+* A new account's first run looks at the channel's latest ~15 videos (all YouTube's feed exposes).
+  With backlog on (`"backlog": true` in accounts.json) they are queued oldest-first and posted
+  2 per rolling 24 hours (`"backlog_per_day"` changes this), spaced about 11 hours apart.
+  With backlog off they are just recorded and never posted. Brand-new videos always post right away
+  and don't count toward the backlog pace.
+* A video (new or backlog) that fails 3 times is skipped for good: it's marked as seen and the script moves on.
+* `"types"` in accounts.json picks what an account reposts: `"shorts"`, `"long"` or `"both"` (default).
+  A video counts as a Short if it is at most 3 minutes long and vertical or square (checked with yt-dlp).
+  Non-matching videos are marked as seen and never posted. To send Shorts to some platforms and long
+  videos to others, add the same channel twice as two accounts with different platforms and types.
 * Videos are downloaded to the temporary runner and deleted; they are never committed.
 * YouTube sometimes blocks downloads from GitHub's servers. If runs fail with a
   "confirm you're not a bot" error, run `repost.py` from a home computer with cron instead
-  (set the same values as environment variables).
+  (set the secrets named in accounts.json as environment variables).
 * GitHub disables scheduled workflows after 60 days without repo activity.
-* To debug link extraction, set `DEBUG: "1"` in the workflow's env block and read the run log.
+* To debug link extraction, add `DEBUG: "1"` to the workflow's env block and read the run log.
   Do this only briefly on a public repo, since the log is public.
