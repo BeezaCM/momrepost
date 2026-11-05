@@ -8,7 +8,8 @@ title/description, and (optionally) sends a Discord embed with links.
 * `accounts.json` - one entry per YouTube channel -> Upload-Post profile + platforms (no secrets in here)
 * `.github/workflows/repost.yml` - the schedule
 * `seen.json` - IDs of videos already handled, per account
-* `backlog.json` - queue of older videos waiting to be posted, when the last ones went out, and failure counts
+* `backlog.json` - the backlog queue: older videos waiting to be posted, when the last ones went out, and
+  failure counts (`seen.json` only lists videos already known, not what is scheduled)
 
 ## Adding or changing accounts
 Run `setup_repo.py` again and type this repo's name. A menu lets you add, edit or remove

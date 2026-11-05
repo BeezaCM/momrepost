@@ -286,6 +286,17 @@ def backlog_due(state, per_day, now):
     return not state["posted"] or now - max(state["posted"]) >= min_gap
 
 
+def backlog_next_time(posted, per_day, now):
+    """Earliest time a backlog video may go out, given when earlier ones were posted."""
+    window = sorted(t for t in posted if now - t < 86400)
+    t = now
+    if window:
+        t = max(t, window[-1] + 86400 / per_day * 0.9)
+        if len(window) >= per_day:
+            t = max(t, window[len(window) - per_day] + 86400)
+    return t
+
+
 def process_account(acc, seen_all, backlog_all):
     name = acc["name"]
     channel = field(acc, "channel_id")
@@ -389,7 +400,13 @@ def process_account(acc, seen_all, backlog_all):
         save_backlog(backlog_all)
         break                                   # one real attempt per run
     if not new and not handled_backlog:
-        print(f"[{name}] nothing new.")
+        if backlog_on and state["queue"]:
+            mins = max(0, int((backlog_next_time(state["posted"], per_day, time.time()) - time.time()) / 60))
+            print(f"[{name}] backlog: {len(state['queue'])} queued, next one in about {mins // 60}h {mins % 60}m.")
+        elif backlog_on:
+            print(f"[{name}] backlog is on but nothing is queued (the queue is only filled on an account's first run).")
+        else:
+            print(f"[{name}] nothing new.")
 
 
 def main():
